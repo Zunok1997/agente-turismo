@@ -6,12 +6,13 @@ on:
     - cron: '0 12 * * 1'
     # Lunes 8:00 AM Chile — verano CLST (UTC-3): 11:00 UTC
     - cron: '0 11 * * 1'
-  workflow_dispatch:  # Ejecución manual desde GitHub UI
+  workflow_dispatch:
 
 jobs:
   generar-newsletter:
     runs-on: ubuntu-latest
-    # Evitar que los dos crons se solapen
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     concurrency:
       group: turismo-newsletter
       cancel-in-progress: false
@@ -25,7 +26,6 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: requirements.txt
 
       - name: Instalar dependencias
         run: pip install -r requirements.txt
@@ -36,13 +36,17 @@ jobs:
           GMAIL_USER:         ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECIPIENT_EMAIL:    ${{ secrets.RECIPIENT_EMAIL }}
-          PAGES_URL:          ${{ secrets.PAGES_URL }}
+          PAGES_URL:          https://zunok1997.github.io/agente-turismo/
         run: python main.py
 
-      - name: Publicar newsletter (GitHub Pages)
+      - name: Publicar en GitHub Pages
         run: |
-          git config user.name  "github-actions[bot]"
+          git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/index.html
-          git diff --cached --quiet || git commit -m "newsletter turismo — $(date -u +'%Y-%m-%d')"
+          touch docs/.nojekyll
+          git add docs/index.html docs/.nojekyll
+          git diff --cached --quiet || git commit -m "Newsletter turismo $(date +%Y-%m-%d)"
           git push
+
+permissions:
+  contents: write
