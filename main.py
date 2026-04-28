@@ -2,7 +2,7 @@ import os
 import re
 import smtplib
 import feedparser
-from groq import Groq
+import anthropic
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -125,11 +125,11 @@ def _format_articles(articles: list[dict], small_ship_only: bool = False) -> str
 # Generación con LLM
 # ---------------------------------------------------------------------------
 def generate_newsletter(articles: list[dict]) -> str:
-    api_key = os.environ.get("GROQ_API_KEY")
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        raise ValueError("GROQ_API_KEY no está configurada. Revisá tu archivo .env")
+        raise ValueError("ANTHROPIC_API_KEY no está configurada. Revisá tu archivo .env")
 
-    client     = Groq(api_key=api_key)
+    client     = anthropic.Anthropic(api_key=api_key)
     today      = datetime.now().strftime("%d de %B de %Y")
     small_ship = [a for a in articles if a["small_ship"]]
 
@@ -221,13 +221,12 @@ Generated: {today} | Small ship articles this week: {len(small_ship)}
 """
 
     print("  Enviando prompt al modelo...")
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
         max_tokens=4096,
-        temperature=0.2,
+        messages=[{"role": "user", "content": prompt}],
     )
-    return response.choices[0].message.content
+    return response.content[0].text
 
 
 # ---------------------------------------------------------------------------

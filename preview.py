@@ -13,8 +13,8 @@ try:
 except ImportError:
     pass
 
-if not os.environ.get("GROQ_API_KEY"):
-    raise SystemExit("ERROR: GROQ_API_KEY no está configurada. Revisá tu archivo .env")
+if not os.environ.get("ANTHROPIC_API_KEY"):
+    raise SystemExit("ERROR: ANTHROPIC_API_KEY no está configurada. Revisá tu archivo .env")
 
 from main import fetch_news, generate_newsletter, build_html
 
