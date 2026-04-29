@@ -28,6 +28,10 @@ print(f"  {len(articles)} artículos ({len(small_ship)} cruceros ≤100 pax)")
 print("Generando análisis con IA...")
 text = generate_newsletter(articles)
 
+draft = Path(__file__).parent / "draft.txt"
+draft.write_text(text, encoding="utf-8")
+print(f"  Borrador guardado en draft.txt — podés editarlo y correr rebuild.py")
+
 print("Construyendo HTML...")
 html = build_html(text, today)
 
