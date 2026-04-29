@@ -20,6 +20,7 @@ RSS_FEEDS = [
     {"name": "Skift",                              "url": "https://skift.com/feed/"},
     {"name": "Adventure Travel Trade Association", "url": "https://www.adventuretravel.biz/feed/"},
     {"name": "Condé Nast Traveler",                "url": "https://www.cntraveler.com/feed/rss"},
+    {"name": "Condé Nast Traveller UK",           "url": "https://www.cntraveller.com/feed/rss"},
     {"name": "Travel + Leisure",                   "url": "https://www.travelandleisure.com/rss"},
     {"name": "Robb Report Travel",                 "url": "https://robbreport.com/travel/feed/"},
     {"name": "National Geographic Travel",         "url": "https://www.nationalgeographic.com/travel/rss"},
@@ -42,7 +43,6 @@ KEYWORDS = [
     "hurtigruten", "silversea", "ponant", "lindblad", "aurora expeditions",
     "quark expeditions", "hapag-lloyd", "viking expeditions", "scenic eclipse",
     "coral expeditions", "aqua expeditions",
-    # inversión y regulación
     "investment", "inversión", "funding", "concession", "concessión",
     "permit", "permiso", "regulation", "regulación", "conservation policy",
     "visa", "access", "acceso", "protected area", "área protegida",
@@ -75,6 +75,22 @@ def _is_small_ship_cruise(title: str, summary: str) -> bool:
     return False
 
 
+def _extract_image(entry) -> str:
+    if hasattr(entry, "media_content") and entry.get("media_content"):
+        url = entry.media_content[0].get("url", "")
+        if url:
+            return url
+    if hasattr(entry, "media_thumbnail") and entry.get("media_thumbnail"):
+        url = entry.media_thumbnail[0].get("url", "")
+        if url:
+            return url
+    if hasattr(entry, "enclosures") and entry.enclosures:
+        for enc in entry.enclosures:
+            if enc.get("type", "").startswith("image/"):
+                return enc.get("url", "")
+    return ""
+
+
 def fetch_news(days_back: int = 7) -> list[dict]:
     cutoff = datetime.now() - timedelta(days=days_back)
     articles = []
@@ -100,6 +116,7 @@ def fetch_news(days_back: int = 7) -> list[dict]:
                     "link":       entry.get("link", ""),
                     "date":       pub_date.strftime("%Y-%m-%d") if pub_date else "fecha desconocida",
                     "small_ship": _is_small_ship_cruise(title, summary),
+                    "image":      _extract_image(entry),
                 })
                 count += 1
             print(f"  [{feed_info['name']}] {count} artículos relevantes")
@@ -112,13 +129,18 @@ def _format_articles(articles: list[dict], small_ship_only: bool = False) -> str
     subset = [a for a in articles if not small_ship_only or a["small_ship"]]
     if not subset:
         return "(No articles in this category this week.)"
-    return "\n\n".join([
-        f"[{a['source']}] {a['date']} {'⚑ SMALL SHIP ≤100 PAX' if a['small_ship'] else ''}\n"
-        f"Title: {a['title']}\n"
-        f"Summary: {a['summary']}\n"
-        f"URL: {a['link']}"
-        for a in subset
-    ])
+    lines = []
+    for a in subset:
+        block = (
+            f"[{a['source']}] {a['date']} {'⚑ SMALL SHIP ≤100 PAX' if a['small_ship'] else ''}\n"
+            f"Title: {a['title']}\n"
+            f"Summary: {a['summary']}\n"
+            f"URL: {a['link']}"
+        )
+        if a.get("image"):
+            block += f"\nIMAGE: {a['image']}"
+        lines.append(block)
+    return "\n\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -147,14 +169,22 @@ Period covered: last 7 days
 {_format_articles(articles, small_ship_only=True)}
 
 ABSOLUTE RULES — NON-NEGOTIABLE:
-1. LANGUAGE PER ARTICLE: Detect the language of each source article. Write the ENTIRE analysis of that article in the SAME language as the source. English source → analysis in English. Spanish source → analysis in Spanish. NEVER mix languages within a single news block.
-2. NO UNSOURCED CLAIMS: Every factual claim (growth, decline, trend, number) MUST reference a specific article from the list above. Format: [fact]. (Source: Name, Date). If you cannot back it up with an article, do not state it.
-3. ALWAYS INCLUDE URL: After each news item analysis, add a line: URL: [full link from the article]
-4. NO DATA INVENTION: Do not invent operators, projects, numbers, or events not present in the articles.
-5. HONEST GAPS: If a region or section has no news this week, say so clearly and provide medium-term structural context only.
-6. SMALL SHIP CRUISES ≤100 PAX: High-priority section. Treat each article with greater depth (3–4 sentences of analysis).
-7. STYLE: Dense, professional, no filler. Consulting report style.
-8. EVENTS TABLE: For the events section, list known upcoming industry events for the next 60 days. Use your training knowledge for recurring industry events (ITB, WTM, ATTA Summit, Seatrade, etc.) and any events mentioned in articles. Mark events from articles as (confirmed) and events from general knowledge as (verify date).
+1. LANGUAGE PER ARTICLE: Detect the language of each source article. Write the ENTIRE analysis of that article in the SAME language as the source. English source → English. Spanish source → Spanish. NEVER mix within a single news block.
+2. NO UNSOURCED CLAIMS: Every factual claim MUST reference a specific article. If you cannot back it up, do not state it.
+3. ALWAYS INCLUDE URL: After each news item, add a line: URL: [full link from the article]
+4. IMAGE LINE: If the article data includes an IMAGE: field, echo it as: IMAGE: [url] — place it right after the SOURCE line.
+5. NO DATA INVENTION: Do not invent operators, projects, numbers, or events not present in the articles.
+6. HONEST GAPS: If a region has no news this week, say so clearly.
+7. SMALL SHIP CRUISES ≤100 PAX: High-priority section. 3–4 sentences of analysis per item.
+8. STYLE: Dense, professional, no filler. Consulting report style.
+9. EVENTS TABLE: List upcoming industry events for the next 60 days. Mark (confirmed) if from an article, (verify date) if from general knowledge.
+
+NEWS ITEM FORMAT — use this EXACT format for every news item in sections 2, 3, and 4:
+TITLE: [original article title]
+SOURCE: [source name] | [date]
+IMAGE: [url — only if IMAGE field was provided in article data, otherwise omit this line entirely]
+ANALYSIS: [analysis in source language]
+URL: [full article URL]
 
 Generate the newsletter with EXACTLY this structure:
 
@@ -165,17 +195,17 @@ Week of {today}
 
 1. EXECUTIVE SUMMARY
 --------------------------------------------------------------------------------
-[2–3 paragraphs. Key trends of the week, backed by articles. If little news, say so directly.]
+[2–3 paragraphs. Key trends of the week, backed by articles.]
 
 2. TOP NEWS & TRENDS
 --------------------------------------------------------------------------------
-[Bullets. For each: original title in source language, source in parentheses, date, 2–3 sentence analysis in SAME language as source, then URL on its own line. Max 8 items.]
+[Use NEWS ITEM FORMAT above. Max 8 items.]
 
 3. REGIONAL ANALYSIS
 --------------------------------------------------------------------------------
 
 3.1 ANTARCTICA / ARCTIC
-[News with analysis in source language + URL. If no news, say so and give seasonal/structural context.]
+[Use NEWS ITEM FORMAT. If no news, give seasonal/structural context as a paragraph.]
 
 3.2 PATAGONIA (CHILE & ARGENTINA)
 [Same]
@@ -188,32 +218,35 @@ Week of {today}
 
 4. EXPEDITION CRUISES — SHIPS ≤100 PASSENGERS
 --------------------------------------------------------------------------------
-[For each article: original title, source, date, 3–4 sentence analysis in source language, URL. If no articles, say so and give segment context.]
+[Use NEWS ITEM FORMAT with 3–4 sentence ANALYSIS. If no articles, give segment context.]
 
 Reference operators: Hurtigruten, Ponant, Silversea Expeditions, Lindblad, Aurora Expeditions, Quark Expeditions, Hapag-Lloyd Expeditions, Scenic Eclipse, Aqua Expeditions.
 
 5. INVESTMENT SIGNALS
 --------------------------------------------------------------------------------
-[New projects announced, lodge/hotel openings, funding rounds, operator expansions in target regions. Source each item. If none in articles, say so.]
+[Bullets. New projects, lodge/hotel openings, funding, operator expansions. Source each item.]
 
 6. REGULATORY PULSE
 --------------------------------------------------------------------------------
-[Visa changes, conservation policy updates, access restrictions, concession news affecting key destinations. Source each item. If none in articles, say so.]
+[Bullets. Visa changes, conservation policy, access restrictions, concession news.]
 
 7. RADAR DEL EVALUADOR
 --------------------------------------------------------------------------------
-[5–6 concrete bullets. What a tourism project evaluator should watch this week. Each bullet grounded in something from the articles or a known structural dynamic.]
+[5–6 concrete bullets. What a tourism project evaluator should watch this week.]
 
 8. UPCOMING INDUSTRY EVENTS
 --------------------------------------------------------------------------------
-[Table format:]
 | Event | Date | Location | Topic |
 |-------|------|----------|-------|
-[List upcoming events for the next 60 days. Mark (confirmed) if from an article, (verify date) if from general knowledge.]
+[Upcoming events for the next 60 days.]
 
 9. STRATEGIC CONCLUSION
 --------------------------------------------------------------------------------
 [1–2 paragraphs. Synthesis and what to monitor next week.]
+
+10. EXPERT'S TAKE
+--------------------------------------------------------------------------------
+[2–3 paragraphs. Your personal informed opinion as a senior luxury tourism consultant: What do these news collectively signal? Where is high-end tourism heading in the next 12–24 months? What opportunities or risks stand out? Clearly labeled as your assessment, not sourced from articles.]
 
 ================================================================================
 Generated: {today} | Small ship articles this week: {len(small_ship)}
@@ -223,7 +256,7 @@ Generated: {today} | Small ship articles this week: {len(small_ship)}
     print("  Enviando prompt al modelo...")
     response = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=4096,
+        max_tokens=5000,
         messages=[{"role": "user", "content": prompt}],
     )
     return response.content[0].text
@@ -232,14 +265,18 @@ Generated: {today} | Small ship articles this week: {len(small_ship)}
 # ---------------------------------------------------------------------------
 # HTML
 # ---------------------------------------------------------------------------
+def _md_bold(text: str) -> str:
+    return re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+
+
 def build_html(text: str, today: str) -> str:
-    lines     = text.split("\n")
-    parts     = []
-    in_list   = False
+    lines      = text.split("\n")
+    parts      = []
+    in_list    = False
     in_section = False
-    in_table  = False
-    table_header_done = False
-    is_cruise = False
+    in_table   = False
+    in_details = False
+    is_cruise  = False
 
     def close_list():
         nonlocal in_list
@@ -248,11 +285,16 @@ def build_html(text: str, today: str) -> str:
             in_list = False
 
     def close_table():
-        nonlocal in_table, table_header_done
+        nonlocal in_table
         if in_table:
             parts.append("</tbody></table>")
             in_table = False
-            table_header_done = False
+
+    def close_details():
+        nonlocal in_details
+        if in_details:
+            parts.append("</div></details>")
+            in_details = False
 
     def close_section():
         nonlocal in_section
@@ -263,10 +305,9 @@ def build_html(text: str, today: str) -> str:
     for line in lines:
         s = line.strip()
 
-        # Decoration / metadata
+        # Decoration / metadata lines
         if re.match(r"^[=]{8,}$", s) or re.match(r"^[-]{8,}$", s):
-            close_list()
-            close_table()
+            close_list(); close_table(); close_details()
             continue
         if "HIGH-END TOURISM NEWSLETTER" in s or "NEWSLETTER DE TURISMO" in s:
             continue
@@ -277,9 +318,8 @@ def build_html(text: str, today: str) -> str:
 
         # Table row
         if s.startswith("|"):
-            close_list()
+            close_list(); close_details()
             cells = [c.strip() for c in s.split("|")[1:-1]]
-            # separator row like |---|---|
             if all(re.match(r"^[-:\s]+$", c) for c in cells):
                 continue
             if not in_table:
@@ -287,7 +327,6 @@ def build_html(text: str, today: str) -> str:
                 parts.append("".join(f"<th>{c}</th>" for c in cells))
                 parts.append("</tr></thead><tbody>")
                 in_table = True
-                table_header_done = True
             else:
                 parts.append("<tr>")
                 parts.append("".join(f"<td>{c}</td>" for c in cells))
@@ -296,42 +335,85 @@ def build_html(text: str, today: str) -> str:
         else:
             close_table()
 
-        # Main section header "1. EXECUTIVE SUMMARY"
+        # Main section header  "1. EXECUTIVE SUMMARY"
         m = re.match(r"^(\d+)\.\s+(.+)$", s)
         if m and s == s.upper():
-            close_list()
-            close_section()
+            close_list(); close_details(); close_section()
             num   = int(m.group(1))
             title = m.group(2).strip()
             is_cruise = num == 4
-            extra_cls = "section cruise-section" if is_cruise else "section"
-            parts.append(f'<div class="{extra_cls}">')
+            is_expert = num == 10
+            if is_cruise:
+                cls = "section cruise-section"
+            elif is_expert:
+                cls = "section expert-section"
+            else:
+                cls = "section"
+            parts.append(f'<div class="{cls}">')
             parts.append(f'<h2 class="section-title">{num}. {title}</h2>')
             in_section = True
             continue
 
-        # Subsection header "3.1 ANTARCTICA / ARCTIC"
+        # Subsection header  "3.1 ANTARCTICA / ARCTIC"
         m2 = re.match(r"^(\d+\.\d+)\s+(.+)$", s)
         if m2:
-            close_list()
+            close_list(); close_details()
             parts.append(f'<h3 class="sub-title">{m2.group(1)} {m2.group(2)}</h3>')
             continue
 
-        # URL line → clickable link
+        # ── News item structured format ──────────────────────────────────────
+
+        # TITLE: → open collapsible item
+        m_title = re.match(r"^TITLE:\s*(.+)$", s)
+        if m_title:
+            close_list(); close_details()
+            title_text = _md_bold(m_title.group(1))
+            cruise_cls = " cruise-item" if is_cruise else ""
+            parts.append(f'<details class="news-item{cruise_cls}">')
+            parts.append(f'<summary><span class="news-title">{title_text}</span></summary>')
+            parts.append('<div class="news-body">')
+            in_details = True
+            continue
+
+        # SOURCE: → source badge (inside summary via JS is complex; render inside body)
+        m_source = re.match(r"^SOURCE:\s*(.+)$", s)
+        if m_source and in_details:
+            src = m_source.group(1)
+            parts.append(f'<p class="news-source-line">{src}</p>')
+            continue
+
+        # IMAGE: → photo
+        m_image = re.match(r"^IMAGE:\s*(https?://\S+)$", s)
+        if m_image and in_details:
+            img_url = m_image.group(1)
+            parts.append(f'<img class="news-img" src="{img_url}" alt="" loading="lazy" onerror="this.style.display=\'none\'">')
+            continue
+
+        # ANALYSIS: → main paragraph
+        m_analysis = re.match(r"^ANALYSIS:\s*(.+)$", s)
+        if m_analysis and in_details:
+            body_text = _md_bold(m_analysis.group(1))
+            parts.append(f'<p>{body_text}</p>')
+            continue
+
+        # URL: → link (closes details if inside one)
         m_url = re.match(r"^URL:\s*(https?://\S+)$", s)
         if m_url:
             close_list()
             url = m_url.group(1)
             parts.append(f'<p class="article-url"><a href="{url}" target="_blank">{url}</a></p>')
+            if in_details:
+                close_details()
             continue
 
         # Bullet
         m3 = re.match(r"^[•\-\*·]\s+(.+)$", s)
         if m3:
+            close_details()
             if not in_list:
                 parts.append('<ul class="bullets">')
                 in_list = True
-            parts.append(f"<li>{m3.group(1)}</li>")
+            parts.append(f"<li>{_md_bold(m3.group(1))}</li>")
             continue
 
         # Empty line
@@ -342,10 +424,11 @@ def build_html(text: str, today: str) -> str:
         # Regular paragraph
         close_list()
         safe = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        parts.append(f"<p>{safe}</p>")
+        parts.append(f"<p>{_md_bold(safe)}</p>")
 
     close_list()
     close_table()
+    close_details()
     close_section()
 
     body = "\n  ".join(parts)
@@ -367,18 +450,62 @@ def build_html(text: str, today: str) -> str:
 
     .section {{ background: white; margin-top: 14px; padding: 32px 36px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }}
     .cruise-section {{ border-left: 5px solid #c9a84c; }}
+    .expert-section {{ border-left: 5px solid #1c3829; background: #f7f9f7; }}
 
     .section-title {{ font-size: 12px; font-weight: bold; letter-spacing: 1.8px; text-transform: uppercase;
                       color: #1c3829; border-bottom: 2px solid #1c3829; padding-bottom: 10px; margin-bottom: 22px; }}
     .cruise-section .section-title {{ color: #7a5c10; border-color: #c9a84c; }}
+    .expert-section .section-title {{ color: #1c3829; border-color: #1c3829; }}
 
     .sub-title {{ font-size: 12px; font-weight: bold; color: #3a6648; margin: 26px 0 10px;
                   letter-spacing: 0.5px; text-transform: uppercase; }}
     .cruise-section .sub-title {{ color: #9a7420; }}
 
     p {{ margin: 10px 0; font-size: 14.5px; }}
-    .article-url {{ font-size: 12px; margin: 4px 0 14px; }}
+    .article-url {{ font-size: 12px; margin: 4px 0 8px; }}
     .article-url a {{ color: #3a6648; word-break: break-all; }}
+
+    /* Collapsible news items */
+    details.news-item {{
+      border: 1px solid #e8e4df;
+      border-radius: 6px;
+      margin: 10px 0;
+      overflow: hidden;
+    }}
+    details.news-item summary {{
+      padding: 14px 18px;
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #faf9f7;
+      user-select: none;
+    }}
+    details.news-item summary::-webkit-details-marker {{ display: none; }}
+    details.news-item summary::before {{
+      content: "▶";
+      font-size: 9px;
+      color: #3a6648;
+      flex-shrink: 0;
+      transition: transform 0.2s;
+    }}
+    details.news-item[open] summary::before {{ transform: rotate(90deg); }}
+    details.news-item[open] summary {{ background: #f0ede8; }}
+    .news-title {{ font-size: 15px; font-weight: bold; color: #1a1a1a; line-height: 1.4; }}
+    details.cruise-item summary::before {{ color: #c9a84c; }}
+    details.cruise-item .news-title {{ color: #7a5c10; }}
+
+    .news-body {{ padding: 16px 20px; background: white; border-top: 1px solid #e8e4df; }}
+    .news-source-line {{ font-size: 12px; color: #888; margin: 0 0 10px; font-style: italic; }}
+    .news-img {{
+      width: 100%;
+      max-height: 220px;
+      object-fit: cover;
+      border-radius: 4px;
+      margin-bottom: 14px;
+      display: block;
+    }}
 
     ul.bullets {{ list-style: none; padding: 0; margin: 12px 0; }}
     ul.bullets li {{ padding: 10px 0 10px 18px; border-bottom: 1px solid #f0ede8;
@@ -408,7 +535,7 @@ def build_html(text: str, today: str) -> str:
 
   <div class="footer">
     Auto-generated · {today}<br>
-    Groq AI (Llama 3.3 70B) · Skift · ATTA · Condé Nast Traveler · Seatrade Cruise News · and other sources
+    Claude Sonnet · Skift · ATTA · Condé Nast Traveler · Seatrade Cruise News · and other sources
   </div>
 </div>
 </body>
@@ -472,7 +599,7 @@ def main():
     small_ship = [a for a in articles if a["small_ship"]]
     print(f"  Total: {len(articles)} artículos ({len(small_ship)} cruceros ≤100 pax).")
 
-    print("\n[2/4] Generando análisis con IA (Groq / Llama 3.3 70B)...")
+    print("\n[2/4] Generando análisis con IA (Claude Sonnet)...")
     text = generate_newsletter(articles)
 
     print("\n[3/4] Generando HTML...")
